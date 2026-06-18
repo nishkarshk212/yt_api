@@ -7,12 +7,9 @@ import uuid
 import httpx
 from dotenv import load_dotenv
 from typing import Optional, Dict, Any
-import static_ffmpeg
 
 load_dotenv()
 
-# Add static ffmpeg paths
-static_ffmpeg.add_paths()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
 
@@ -21,13 +18,9 @@ app = FastAPI(title="YT-DLP Music API")
 DOWNLOAD_DIR = tempfile.mkdtemp()
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
+# Options without postprocessor (no ffmpeg needed for info)
 ydl_opts = {
     'format': 'bestaudio/best',
-    'postprocessors': [{
-        'key': 'FFmpegExtractAudio',
-        'preferredcodec': 'mp3',
-        'preferredquality': '192',
-    }],
     'outtmpl': os.path.join(DOWNLOAD_DIR, '%(id)s.%(ext)s'),
     'quiet': True,
     'no_warnings': True,
@@ -88,12 +81,15 @@ async def download_audio(url: str = Query(..., description="YouTube or video URL
         with yt_dlp.YoutubeDL(temp_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info)
-            mp3_path = os.path.splitext(file_path)[0] + ".mp3"
             
-            if os.path.exists(mp3_path):
-                return FileResponse(mp3_path, media_type="audio/mpeg", filename=f"{info['title']}.mp3")
+            if os.path.exists(file_path):
+                # Determine the correct media type
+                ext = os.path.splitext(file_path)[1].lower()
+                media_type = "audio/mpeg" if ext == ".mp3" else "audio/webm" if ext == ".webm" else "audio/*"
+                filename = f"{info['title']}{ext}"
+                return FileResponse(file_path, media_type=media_type, filename=filename)
             else:
-                raise HTTPException(status_code=500, detail="Failed to convert to MP3")
+                raise HTTPException(status_code=500, detail="Failed to download audio")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -136,7 +132,7 @@ async def telegram_webhook(request: Request):
                     
                     await send_telegram_message(chat_id, f"⏳ Downloading: {info['title']}...")
                     
-                    # Download and convert
+                    # Download
                     file_id = str(uuid.uuid4())
                     temp_opts = ydl_opts.copy()
                     temp_opts['outtmpl'] = os.path.join(DOWNLOAD_DIR, f"{file_id}.%(ext)s")
@@ -144,10 +140,9 @@ async def telegram_webhook(request: Request):
                     with yt_dlp.YoutubeDL(temp_opts) as ydl:
                         info = ydl.extract_info(text, download=True)
                         file_path = ydl.prepare_filename(info)
-                        mp3_path = os.path.splitext(file_path)[0] + ".mp3"
                     
-                    if os.path.exists(mp3_path):
-                        with open(mp3_path, "rb") as f:
+                    if os.path.exists(file_path):
+                        with open(file_path, "rb") as f:
                             await send_telegram_audio(chat_id, f, info['title'])
                     
                     return {"status": "success", "message": "Audio sent!"}

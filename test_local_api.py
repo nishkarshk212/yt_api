@@ -4,7 +4,7 @@ import os
 async def test_local_api():
     local_url = "http://localhost:8000"
     test_video_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-    output_file = "test_audio.mp3"
+    output_file_base = "test_audio"
     
     try:
         print(f"🔍 Testing Local API at {local_url}...")
@@ -31,6 +31,11 @@ async def test_local_api():
             print(f"✅ Download endpoint: {download_response.status_code}")
             
             if download_response.status_code == 200:
+                # Determine extension from content-type
+                content_type = download_response.headers.get("content-type", "")
+                ext = ".webm" if "webm" in content_type else ".mp3"
+                output_file = f"{output_file_base}{ext}"
+                
                 with open(output_file, "wb") as f:
                     f.write(download_response.content)
                 print(f"✅ Audio saved as {output_file} ({len(download_response.content)} bytes)")

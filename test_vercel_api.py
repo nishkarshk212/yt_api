@@ -3,7 +3,7 @@ import httpx
 async def test_vercel_api():
     vercel_url = "https://yt-api-two-plum.vercel.app"
     test_video_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-    output_file = "vercel_test_audio.mp3"
+    output_file_base = "vercel_test_audio"
     
     try:
         print(f"🔍 Testing Vercel API at {vercel_url}...")
@@ -32,6 +32,11 @@ async def test_vercel_api():
             print(f"✅ Download endpoint: {download_response.status_code}")
             
             if download_response.status_code == 200:
+                # Determine extension from content-type
+                content_type = download_response.headers.get("content-type", "")
+                ext = ".webm" if "webm" in content_type else ".mp3"
+                output_file = f"{output_file_base}{ext}"
+                
                 with open(output_file, "wb") as f:
                     f.write(download_response.content)
                 print(f"✅ Audio saved as {output_file} ({len(download_response.content)} bytes)")
