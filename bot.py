@@ -1,5 +1,8 @@
 import os
-import httpx
+import yt_dlp
+import tempfile
+import uuid
+import asyncio
 import logging
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -11,7 +14,6 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
-from telegram.request import HTTPXRequest
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -21,8 +23,59 @@ logging.basicConfig(
 load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
+# yt-dlp options - simple and reliable
+ydl_opts = {
+    'format': 'bestaudio/best',
+    'quiet': True,
+    'no_warnings': True,
+    'noplaylist': True,
+}
+
+def _search_songs_sync(query: str, limit: int = 5):
+    """Synchronous search function"""
+    ydl_search_opts = {
+        **ydl_opts,
+        'extract_flat': True,
+        'quiet': True,
+    }
+    with yt_dlp.YoutubeDL(ydl_search_opts) as ydl:
+        results = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
+        return results.get('entries', [])
+
+def _get_video_info_sync(url: str):
+    """Synchronous video info function"""
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+        return info
+
+def _download_audio_sync(url: str):
+    """Synchronous download function"""
+    download_dir = tempfile.mkdtemp()
+    unique_id = str(uuid.uuid4())
+    outtmpl = os.path.join(download_dir, f"{unique_id}.%(ext)s")
+    
+    download_opts = {
+        **ydl_opts,
+        'outtmpl': outtmpl,
+    }
+    
+    with yt_dlp.YoutubeDL(download_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        filename = ydl.prepare_filename(info)
+        return filename, info
+
+async def search_songs(query: str, limit: int = 5):
+    """Async wrapper for search"""
+    return await asyncio.to_thread(_search_songs_sync, query, limit)
+
+async def get_video_info(url: str):
+    """Async wrapper for video info"""
+    return await asyncio.to_thread(_get_video_info_sync, url)
+
+async def download_audio(url: str):
+    """Async wrapper for download"""
+    return await asyncio.to_thread(_download_audio_sync, url)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -37,12 +90,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /ping - Check if I'm alive"
     )
 
-
 async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🏓 Pong!\n\n✅ Bot is running perfectly!\nAPI Status: Connected"
+        "🏓 Pong!\n\n✅ Bot is running perfectly!"
     )
-
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
@@ -52,24 +103,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         status_message = await update.message.reply_text("🔍 Fetching audio info...")
 
         try:
-            async with httpx.AsyncClient(timeout=180.0) as client:
-                info_response = await client.get(
-                    f"{API_BASE_URL}/info", params={"url": text}
-                )
-                info = info_response.json()["data"]
-
-                await status_message.edit_text(f"⏳ Downloading: {info['title']}...")
-
-                download_response = await client.get(
-                    f"{API_BASE_URL}/download", params={"url": text}
-                )
-
-                await status_message.delete()
+            info = await get_video_info(text)
+            await status_message.edit_text(f"⏳ Downloading: {info['title']}...")
+            
+            audio_file, info = await download_audio(text)
+            
+            await status_message.delete()
+            with open(audio_file, 'rb') as f:
                 await update.message.reply_audio(
-                    audio=download_response.content,
-                    title=info["title"],
-                    filename=f"{info['title']}.webm",
+                    audio=f,
+                    title=info['title'],
+                    filename=f"{info['title']}.{info['ext']}",
                 )
+            
+            # Clean up
+            os.remove(audio_file)
+            os.rmdir(os.path.dirname(audio_file))
+            
         except Exception as e:
             await status_message.edit_text(f"❌ Error: {str(e)}")
     else:
@@ -77,42 +127,37 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         status_message = await update.message.reply_text("🔍 Searching for songs...")
 
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                search_response = await client.get(
-                    f"{API_BASE_URL}/search", params={"query": text, "limit": 5}
+            results = await search_songs(text, limit=5)
+            
+            if not results:
+                await status_message.edit_text("❌ No results found!")
+                return
+
+            # Create inline keyboard
+            keyboard = []
+            for i, song in enumerate(results):
+                keyboard.append(
+                    [
+                        InlineKeyboardButton(
+                            f"{i+1}. {song['title'][:50]}...",
+                            callback_data=f"download:{song['url']}",
+                        )
+                    ]
                 )
-                search_data = search_response.json()
 
-                if not search_data.get("results"):
-                    await status_message.edit_text("❌ No results found!")
-                    return
+            reply_markup = InlineKeyboardMarkup(keyboard)
 
-                # Create inline keyboard
-                keyboard = []
-                for i, song in enumerate(search_data["results"]):
-                    keyboard.append(
-                        [
-                            InlineKeyboardButton(
-                                f"{i+1}. {song['title'][:50]}...",
-                                callback_data=f"download:{song['url']}",
-                            )
-                        ]
-                    )
-
-                reply_markup = InlineKeyboardMarkup(keyboard)
-
-                await status_message.delete()
-                await update.message.reply_text(
-                    "🎵 Here are the results! Choose one to download:",
-                    reply_markup=reply_markup,
-                )
+            await status_message.delete()
+            await update.message.reply_text(
+                "🎵 Here are the results! Choose one to download:",
+                reply_markup=reply_markup,
+            )
         except Exception as e:
             await status_message.edit_text(f"❌ Error: {str(e)}")
 
-
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()  # Answer the callback query
+    await query.answer()
 
     if query.data.startswith("download:"):
         url = query.data.split(":", 1)[1]
@@ -120,34 +165,31 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         status_message = await query.message.reply_text("🔍 Fetching audio info...")
 
         try:
-            async with httpx.AsyncClient(timeout=180.0) as client:
-                info_response = await client.get(
-                    f"{API_BASE_URL}/info", params={"url": url}
-                )
-                info = info_response.json()["data"]
-
-                await status_message.edit_text(f"⏳ Downloading: {info['title']}...")
-
-                download_response = await client.get(
-                    f"{API_BASE_URL}/download", params={"url": url}
-                )
-
-                await status_message.delete()
+            info = await get_video_info(url)
+            await status_message.edit_text(f"⏳ Downloading: {info['title']}...")
+            
+            audio_file, info = await download_audio(url)
+            
+            await status_message.delete()
+            with open(audio_file, 'rb') as f:
                 await query.message.reply_audio(
-                    audio=download_response.content,
-                    title=info["title"],
-                    filename=f"{info['title']}.webm",
+                    audio=f,
+                    title=info['title'],
+                    filename=f"{info['title']}.{info['ext']}",
                 )
+            
+            # Clean up
+            os.remove(audio_file)
+            os.rmdir(os.path.dirname(audio_file))
+            
         except Exception as e:
             await status_message.edit_text(f"❌ Error: {str(e)}")
-
 
 async def post_init(application):
     bot = application.bot
     me = await bot.get_me()
     print(f"✅ Bot logged in as @{me.username} ({me.first_name})")
     print("Bot is ready to use!")
-
 
 def main():
     app = (
@@ -172,7 +214,6 @@ def main():
 
     print("Starting bot...")
     app.run_polling()
-
 
 if __name__ == "__main__":
     main()

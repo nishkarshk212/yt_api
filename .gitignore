@@ -4,3 +4,5 @@ __pycache__/
 .DS_Store
 test_audio.*
 vercel_test_audio.*
+test_search.py
+example_custom_bot.py
