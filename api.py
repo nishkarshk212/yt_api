@@ -7,8 +7,12 @@ import uuid
 import httpx
 from dotenv import load_dotenv
 from typing import Optional, Dict, Any
+import static_ffmpeg
 
 load_dotenv()
+
+# Add static ffmpeg paths
+static_ffmpeg.add_paths()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
 
