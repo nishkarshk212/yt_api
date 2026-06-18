@@ -43,14 +43,6 @@ ydl_opts = {
     'ignoreerrors': False,
     'nocheckcertificate': True,
     'prefer_insecure': False,
-    'extractor_args': {
-        'youtube': {
-            'player_skip': ['webpage'],
-            'player_client': ['web'],
-            'skip': ['hls', 'dash', 'translated_subs'],
-            'formats': ['best'],
-        }
-    },
     'http_headers': {
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
