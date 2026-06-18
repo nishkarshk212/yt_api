@@ -42,12 +42,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
-            info_response = await client.get(f"{API_BASE_URL}/info/{url}")
+            info_response = await client.get(f"{API_BASE_URL}/info", params={"url": url})
             info = info_response.json()
             
             await status_message.edit_text(f"⏳ Downloading: {info['title']}...")
             
-            download_response = await client.get(f"{API_BASE_URL}/download/{url}")
+            download_response = await client.get(f"{API_BASE_URL}/download", params={"url": url})
             
             await status_message.delete()
             await update.message.reply_audio(

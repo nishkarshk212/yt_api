@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 import yt_dlp
 import os
@@ -27,8 +27,8 @@ ydl_opts = {
 async def root():
     return {"message": "YT-DLP Music API"}
 
-@app.get("/info/{url:path}")
-async def get_audio_info(url: str):
+@app.get("/info")
+async def get_audio_info(url: str = Query(..., description="YouTube or video URL")):
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -42,8 +42,8 @@ async def get_audio_info(url: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/download/{url:path}")
-async def download_audio(url: str):
+@app.get("/download")
+async def download_audio(url: str = Query(..., description="YouTube or video URL")):
     file_id = str(uuid.uuid4())
     temp_opts = ydl_opts.copy()
     temp_opts['outtmpl'] = os.path.join(DOWNLOAD_DIR, f"{file_id}.%(ext)s")
