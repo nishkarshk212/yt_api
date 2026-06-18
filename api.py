@@ -27,6 +27,8 @@ ydl_opts = {
     'outtmpl': os.path.join(DOWNLOAD_DIR, '%(id)s.%(ext)s'),
     'quiet': True,
     'no_warnings': True,
+    'extractor_args': {'youtube': {'player_skip': ['webpage', 'config']}},
+    'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
 }
 
 async def send_telegram_message(chat_id: int, text: str):
