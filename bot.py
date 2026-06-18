@@ -24,38 +24,14 @@ load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-# Better yt-dlp options with anti-bot measures
+# Simple, reliable yt-dlp options
 ydl_opts = {
     'format': 'bestaudio/best',
     'quiet': False,
     'no_warnings': False,
     'noplaylist': True,
-    'geo_bypass': True,
-    'geo_bypass_country': 'US',
-    'extract_flat': 'in_playlist',
-    'extractor_args': {
-        'youtube': {
-            'player_client': ['ios', 'android', 'web'],
-            'player_skip': ['webpage'],
-        }
-    },
-    'socket_timeout': 120,
-    'retries': 20,
-    'fragment_retries': 20,
-    'extractor_retries': 20,
     'http_headers': {
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Cache-Control': 'max-age=0',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
     }
 }
 
