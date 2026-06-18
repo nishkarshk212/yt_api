@@ -24,7 +24,19 @@ ydl_opts = {
     'outtmpl': os.path.join(DOWNLOAD_DIR, '%(id)s.%(ext)s'),
     'quiet': True,
     'no_warnings': True,
-    'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    'geo_bypass': True,
+    'geo_bypass_country': 'US',
+    'socket_timeout': 30,
+    'retries': 10,
+    'fragment_retries': 10,
+    'extractor_retries': 10,
+    'noplaylist': True,
+    'write_pages': False,
+    'writeinfojson': False,
+    'postprocessor_args': {
+        'ffmpeg_i': ['-nostdin'],
+    },
 }
 
 async def send_telegram_message(chat_id: int, text: str):
