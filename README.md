@@ -16,17 +16,11 @@
 3. **Create .env file**:
    ```
    TELEGRAM_BOT_TOKEN=your_bot_token
-   API_BASE_URL=http://localhost:8000
    ```
 
 4. **Start the API server**:
    ```bash
    python api.py
-   ```
-
-5. **Start the Telegram bot** (in a new terminal):
-   ```bash
-   python bot.py
    ```
 
 ## Deploying to Vercel
@@ -36,9 +30,22 @@
    - `TELEGRAM_BOT_TOKEN` - Your Telegram bot token
 4. **Deploy!**
 
+## Setting Up Telegram Webhook
+After deploying to Vercel, set the webhook URL for your Telegram bot using this request (replace with your actual Vercel URL):
+```
+https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url=https://yt-api-two-plum.vercel.app/telegram/webhook
+```
+
+## API Endpoints
+- `GET /` - Root endpoint
+- `GET /check` - Check if API is running
+- `GET /info?url=<VIDEO_URL>` - Get audio information
+- `GET /download?url=<VIDEO_URL>` - Download audio as MP3
+- `POST /telegram/webhook` - Telegram bot webhook
+
 ## Bot Commands
 - `/start` - Welcome message
-- `/ping` - Check if bot is alive
+- `/check` - Check if bot is alive
 
 ## How to Use
 - Send a YouTube (or other yt-dlp supported) link to the bot
