@@ -11,8 +11,8 @@ async def test_vercel_api():
             root_response = await client.get(f"{vercel_url}/")
             print(f"✅ Root endpoint: {root_response.status_code} - {root_response.json()}")
             
-            # Test info endpoint
-            info_response = await client.get(f"{vercel_url}/info/{test_video_url}")
+            # Test info endpoint with query param
+            info_response = await client.get(f"{vercel_url}/info", params={"url": test_video_url})
             print(f"✅ Info endpoint: {info_response.status_code}")
             if info_response.status_code == 200:
                 info = info_response.json()
