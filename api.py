@@ -71,6 +71,41 @@ async def get_audio_info(url: str = Query(..., description="YouTube or video URL
     except Exception as e:
         raise HTTPException(status_code=500, detail={"status": "error", "message": str(e)})
 
+@app.get("/search")
+async def search_songs(query: str = Query(..., description="Search query (song name, artist, etc.)"), limit: int = Query(5, description="Number of results to return")):
+    try:
+        search_opts = ydl_opts.copy()
+        search_opts['quiet'] = True
+        search_opts['extract_flat'] = True
+        
+        with yt_dlp.YoutubeDL(search_opts) as ydl:
+            # Use yt-dlp's YouTube search
+            results = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
+            
+            if not results or 'entries' not in results:
+                raise HTTPException(status_code=404, detail="No results found")
+            
+            # Format the results
+            songs = []
+            for entry in results['entries']:
+                if entry:  # Skip None entries
+                    songs.append({
+                        'id': entry.get('id'),
+                        'title': entry.get('title'),
+                        'url': entry.get('url') or f"https://www.youtube.com/watch?v={entry.get('id')}",
+                        'duration': entry.get('duration'),
+                        'thumbnail': entry.get('thumbnail'),
+                        'channel': entry.get('channel')
+                    })
+            
+            return {
+                'status': 'success',
+                'query': query,
+                'results': songs
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/download")
 async def download_audio(url: str = Query(..., description="YouTube or video URL")):
     file_id = str(uuid.uuid4())
@@ -110,7 +145,9 @@ async def telegram_webhook(request: Request):
                     chat_id,
                     f"🎵 Hi {first_name}! 👋\n\n"
                     "✅ I'm your YouTube Music Downloader Bot!\n\n"
-                    "📥 Just send me any YouTube (or other supported site) link and I'll send you the audio in MP3 format!\n\n"
+                    "📥 How to use me:\n"
+                    "1. Send a song name to search\n"
+                    "2. Or send a YouTube link directly\n\n"
                     "Commands:\n"
                     "• /start - Show this welcome message\n"
                     "• /check - Check if I'm alive"
@@ -121,8 +158,9 @@ async def telegram_webhook(request: Request):
                 await send_telegram_message(chat_id, "🏓 Pong!\n\n✅ Bot is running perfectly!")
                 return {"status": "success"}
             
-            # Handle text messages (URLs)
+            # Handle text messages
             elif text.startswith("http"):
+                # Handle URL directly
                 status_msg = await send_telegram_message(chat_id, "🔍 Fetching audio info...")
                 
                 try:
@@ -151,8 +189,94 @@ async def telegram_webhook(request: Request):
                     await send_telegram_message(chat_id, f"❌ Error: {str(e)}")
                     return {"status": "error", "message": str(e)}
             else:
-                await send_telegram_message(chat_id, "❌ Please send a valid URL starting with http:// or https://")
-                return {"status": "error"}
+                # Search for song
+                status_msg = await send_telegram_message(chat_id, "🔍 Searching for songs...")
+                
+                try:
+                    search_opts = ydl_opts.copy()
+                    search_opts['quiet'] = True
+                    search_opts['extract_flat'] = True
+                    
+                    with yt_dlp.YoutubeDL(search_opts) as ydl:
+                        results = ydl.extract_info(f"ytsearch5:{text}", download=False)
+                    
+                    if not results or 'entries' not in results:
+                        await send_telegram_message(chat_id, "❌ No results found!")
+                        return {"status": "error"}
+                    
+                    # Prepare inline keyboard
+                    keyboard = []
+                    for i, entry in enumerate(results['entries']):
+                        if entry:
+                            keyboard.append([{
+                                "text": f"{i+1}. {entry.get('title', 'Unknown')[:50]}...",
+                                "callback_data": f"download:{entry.get('id')}"
+                            }])
+                    
+                    # Send search results
+                    async with httpx.AsyncClient(timeout=60.0) as client:
+                        await client.post(
+                            f"{TELEGRAM_API_URL}/sendMessage",
+                            json={
+                                "chat_id": chat_id,
+                                "text": "🎵 Here are the results! Choose one to download:",
+                                "reply_markup": {
+                                    "inline_keyboard": keyboard
+                                }
+                            }
+                        )
+                    
+                    return {"status": "success"}
+                
+                except Exception as e:
+                    await send_telegram_message(chat_id, f"❌ Error: {str(e)}")
+                    return {"status": "error", "message": str(e)}
+        
+        # Handle callback queries (when user selects a song)
+        elif "callback_query" in update:
+            callback_query = update["callback_query"]
+            chat_id = callback_query["message"]["chat"]["id"]
+            data = callback_query.get("data", "")
+            
+            if data.startswith("download:"):
+                video_id = data.split(":", 1)[1]
+                url = f"https://www.youtube.com/watch?v={video_id}"
+                
+                # Answer callback query
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    await client.post(
+                        f"{TELEGRAM_API_URL}/answerCallbackQuery",
+                        json={"callback_query_id": callback_query["id"]}
+                    )
+                
+                # Download and send
+                status_msg = await send_telegram_message(chat_id, "⏳ Downloading...")
+                
+                try:
+                    # Get audio info
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        info = ydl.extract_info(url, download=False)
+                    
+                    await send_telegram_message(chat_id, f"⏳ Downloading: {info['title']}...")
+                    
+                    # Download
+                    file_id = str(uuid.uuid4())
+                    temp_opts = ydl_opts.copy()
+                    temp_opts['outtmpl'] = os.path.join(DOWNLOAD_DIR, f"{file_id}.%(ext)s")
+                    
+                    with yt_dlp.YoutubeDL(temp_opts) as ydl:
+                        info = ydl.extract_info(url, download=True)
+                        file_path = ydl.prepare_filename(info)
+                    
+                    if os.path.exists(file_path):
+                        with open(file_path, "rb") as f:
+                            await send_telegram_audio(chat_id, f, info['title'])
+                    
+                    return {"status": "success", "message": "Audio sent!"}
+                
+                except Exception as e:
+                    await send_telegram_message(chat_id, f"❌ Error: {str(e)}")
+                    return {"status": "error", "message": str(e)}
         
         return {"status": "success"}
     except Exception as e:
